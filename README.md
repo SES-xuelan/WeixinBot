@@ -753,9 +753,11 @@ Content:
 
 ## Todo
 - [x] 发送图片或者文件功能
-- [ ] 主动给群聊发送消息
+- [x] 主动给群聊发送消息
 - [ ] 建立群聊
 - [x] 群发消息
 - [ ] 补充更多的接口及完善文档
 
+
+P.S. 图灵机器人的接口，请自己申请key，然后替换`_xiaojingling_post`中的`key`
 P.S. 还有啥要补充的也可以在[issue #8](https://github.com/Urinx/WeixinBot/issues/8)下留言
