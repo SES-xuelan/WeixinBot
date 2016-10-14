@@ -126,6 +126,7 @@ class WebWeixin(object):
                              'notification_messages']
         self.TimeOut = 20  # 同步最短时间间隔（单位：秒）
         self.media_count = -1
+        self.AllMessages = {}
 
         self.cookie = cookielib.CookieJar()
         opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(self.cookie))
@@ -697,7 +698,7 @@ class WebWeixin(object):
             # 收到了红包
             if content == '收到红包，请在手机上查看':
                 msg['message'] = content
-                if self.webwxsendmsg('抢红包啦！！！', msg['FromUserName']):
+                if self.webwxsendmsg('抢红包啦！！！', msg['raw_msg']['FromUserName']):
                     print '抢红包啦！！！'
                 else:
                     print '发送信息失败'
@@ -717,6 +718,8 @@ class WebWeixin(object):
                                              dstName.strip(), content.replace('<br/>', '\n'))
 
         print fnContent
+
+        self.AllMessages[str(message_id)] = content
         self._info(fnContent)
 
         fn = 'msgs/msg.json'
@@ -743,15 +746,16 @@ class WebWeixin(object):
                 print '###' + str(content.find('小精灵')) + '###' + str(
                     content.find('@' + self.User['NickName']))
                 nick = content.find('@' + self.User['NickName'])
-                if content.find('小精灵') == 71 or nick > 0:
-                    if content.find('小精灵') == 71:
-                        content = content[71 + len('小精灵'):]
+                xiaojngling = content.find('小精灵')
+                if xiaojngling > 0 or nick > 0:
+                    if xiaojngling > 0:
+                        content = content[xiaojngling + len('小精灵'):]
                     else:
                         content = content[nick + len('@' + self.User['NickName']):]
 
                     ans = self._xiaojingling_post(content)
                     self._autoReply(ans, msg['FromUserName'])
-                elif msg['FromUserName'][:2] != '@@':
+                elif msg['FromUserName'][:2] != '@@' and msg['FromUserName'][:2] != self.User['NickName']:
                     ans = '[自动回复]您好，我现在有事不在，一会再和您联系，如果有急事请打电话'
                     self._autoReply(ans, msg['FromUserName'])
 
@@ -829,8 +833,21 @@ class WebWeixin(object):
 
             elif msgType == 10002:
                 raw_msg = {'raw_msg': msg, 'message': '%s 撤回了一条消息' % name}
+                # print "msg:" + str(msg)
                 self._showMsg(raw_msg)
-                self._autoReply('@%s 你又撤回了什么见不得人的消息？' % name, msg['FromUserName'])
+                srcName = name
+                if msg['FromUserName'][:2] == '@@':
+                    # 来自群的消息
+                    if re.search(":<br/>", content, re.IGNORECASE):
+                        [people, content] = content.split(':<br/>')
+                        srcName = self.getUserRemarkName(people)
+                    else:
+                        srcName = ""
+
+                self._autoReply('@%s 你又撤回了什么见不得人的消息？' % srcName, msg['FromUserName'])
+                oldmsgid = re.search('<msgid>(\d+)</msgid>', content)
+                # print("oldmsgid:" + str(oldmsgid.group(1)))
+                print ('撤回的消息 id：' + oldmsgid.group(1) + "|内容：" + self.AllMessages[str(oldmsgid.group(1))])
 
             else:
                 self._log('[*] 该消息类型为: %d，可能是表情，图片, 链接或红包: %s' %
@@ -838,6 +855,8 @@ class WebWeixin(object):
                 raw_msg = {
                     'raw_msg': msg, 'message': '[*] 该消息类型为: %d，可能是表情，图片, 链接或红包' % msg['MsgType']}
                 self._showMsg(raw_msg)
+
+                # print("self.AllMessages:" + str(self.AllMessages))
 
     def listenMsgMode(self):
         print '[*] 进入消息监听模式 ... 成功'
@@ -869,6 +888,9 @@ class WebWeixin(object):
                     redEnvelope += 1
                     print '[*] 收到疑似红包消息 %d 次' % redEnvelope
                     self._log('[*] 收到疑似红包消息 %d 次' % redEnvelope)
+                    r = self.webwxsync()
+                    if r is not None:
+                        self.handleMsg(r)
                 elif selector == '7':
                     playWeChat += 1
                     print '[*] 你在手机上玩微信被我发现了 %d 次' % playWeChat
@@ -981,6 +1003,7 @@ class WebWeixin(object):
             print '[*] 自动回复模式 ... 关闭'
             self._log('[*] 自动回复模式 ... 关闭')
 
+        self._switchautoReplyMode(self.autoReplyMode)
         listenProcess = multiprocessing.Process(target=self.listenMsgMode)
         # listenProcess = threading.Thread(target=self.listenMsgMode)
         listenProcess.start()
@@ -1016,10 +1039,10 @@ class WebWeixin(object):
                 self._log('发送表情')
             elif text == 'autorepon':
                 print '开启自动回复'
-                self.autoReplyMode = True
+                self._switchautoReplyMode(True)
             elif text == 'autorepoff':
                 print '关闭自动回复'
-                self.autoReplyMode = False
+                self._switchautoReplyMode(False)
 
     def _safe_open(self, path):
         if self.autoOpen:
@@ -1155,13 +1178,32 @@ class WebWeixin(object):
         return '未知'
 
     def _autoReply(self, ans, toUserName):
-        if self.autoReplyMode:
-            if self.webwxsendmsg(ans, toUserName):
-                print '自动回复: ' + ans
-                self._info('自动回复: ' + ans)
-            else:
-                print '自动回复失败'
-                self._info('自动回复失败')
+        print ("self.autoReplyMode" + str(self.autoReplyMode))
+        fn = 'config/autoReply.txt'
+        try:
+            file_object = open(fn)
+            try:
+                self.autoReplyMode = (file_object.read() == "True")
+                if self.autoReplyMode == True:
+                    if self.webwxsendmsg(ans, toUserName):
+                        print '自动回复: ' + ans
+                        self._info('自动回复: ' + ans)
+                    else:
+                        print '自动回复失败'
+                        self._info('自动回复失败')
+            finally:
+                file_object.close()
+        except:
+            print("config file not fond")
+
+    def _switchautoReplyMode(self, b):
+        fn = 'config/autoReply.txt'
+        if b:
+            with open(fn, 'w+') as f:
+                f.write("True")
+        else:
+            with open(fn, 'w+') as f:
+                f.write("False")
 
     def _log(self, str=""):
         if self.DEBUG:
