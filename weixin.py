@@ -755,7 +755,7 @@ class WebWeixin(object):
 
                     ans = self._xiaojingling_post(content)
                     self._autoReply(ans, msg['FromUserName'])
-                elif msg['FromUserName'][:2] != '@@' and msg['FromUserName'][:2] != self.User['NickName']:
+                elif msg['FromUserName'][:2] != '@@' and msg['FromUserName'] != self.User['UserName']:
                     ans = '[自动回复]您好，我现在有事不在，一会再和您联系，如果有急事请打电话'
                     self._autoReply(ans, msg['FromUserName'])
 
@@ -847,7 +847,12 @@ class WebWeixin(object):
                 self._autoReply('@%s 你又撤回了什么见不得人的消息？' % srcName, msg['FromUserName'])
                 oldmsgid = re.search('<msgid>(\d+)</msgid>', content)
                 # print("oldmsgid:" + str(oldmsgid.group(1)))
-                print ('撤回的消息 id：' + oldmsgid.group(1) + "|内容：" + self.AllMessages[str(oldmsgid.group(1))])
+                fnContent = '撤回的消息 id：' + oldmsgid.group(1) + "|内容：" + self.AllMessages[str(oldmsgid.group(1))]
+                print (fnContent)
+
+                fn = 'msgs/undo.json'
+                with open(fn, 'a') as f:
+                    f.write(fnContent + "|full_message:" + str(msg) + '\n\n')
 
             else:
                 self._log('[*] 该消息类型为: %d，可能是表情，图片, 链接或红包: %s' %
@@ -1016,25 +1021,25 @@ class WebWeixin(object):
                 self._log('[*] 退出微信')
                 exit()
             elif text[:2] == '->':
-                [name, word] = text[2:].split(':')
+                [name, word] = text[2:].split(':', 1)
                 if name == 'all':
                     self.sendMsgToAll(word)
                 else:
                     self.sendMsg(name, word)
             elif text[:3] == 'm->':
-                [name, file] = text[3:].split(':')
+                [name, file] = text[3:].split(':',1)
                 self.sendMsg(name, file, True)
             elif text[:3] == 'f->':
                 print '发送文件'
                 self._log('发送文件')
             elif text[:3] == 'i->':
                 print '发送图片'
-                [name, file_name] = text[3:].split(':')
+                [name, file_name] = text[3:].split(':',1)
                 self.sendImg(name, file_name)
                 self._log('发送图片')
             elif text[:3] == 'e->':
                 print '发送表情'
-                [name, file_name] = text[3:].split(':')
+                [name, file_name] = text[3:].split(':',1)
                 self.sendEmotion(name, file_name)
                 self._log('发送表情')
             elif text == 'autorepon':
@@ -1180,21 +1185,22 @@ class WebWeixin(object):
     def _autoReply(self, ans, toUserName):
         print ("self.autoReplyMode" + str(self.autoReplyMode))
         fn = 'config/autoReply.txt'
-        try:
-            file_object = open(fn)
+        if toUserName != self.User['UserName']:
             try:
-                self.autoReplyMode = (file_object.read() == "True")
-                if self.autoReplyMode == True:
-                    if self.webwxsendmsg(ans, toUserName):
-                        print '自动回复: ' + ans
-                        self._info('自动回复: ' + ans)
-                    else:
-                        print '自动回复失败'
-                        self._info('自动回复失败')
-            finally:
-                file_object.close()
-        except:
-            print("config file not fond")
+                file_object = open(fn)
+                try:
+                    self.autoReplyMode = (file_object.read() == "True")
+                    if self.autoReplyMode == True:
+                        if self.webwxsendmsg(ans, toUserName):
+                            print '自动回复: ' + ans
+                            self._info('自动回复: ' + ans)
+                        else:
+                            print '自动回复失败'
+                            self._info('自动回复失败')
+                finally:
+                    file_object.close()
+            except:
+                print("config file not fond")
 
     def _switchautoReplyMode(self, b):
         fn = 'config/autoReply.txt'
