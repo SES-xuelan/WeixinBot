@@ -20,6 +20,7 @@ from collections import defaultdict
 from urlparse import urlparse
 from lxml import html
 from httplib import BadStatusLine
+import HTMLParser
 
 import sys
 
@@ -683,7 +684,7 @@ class WebWeixin(object):
             if msg['raw_msg']['FromUserName'][:2] == '@@':
                 # 接收到来自群的消息
                 if re.search(":<br/>", content, re.IGNORECASE):
-                    [people, content] = content.split(':<br/>')
+                    [people, content] = content.split(':<br/>', 1)
                     groupName = srcName
                     srcName = self.getUserRemarkName(people)
                     dstName = 'GROUP'
@@ -728,8 +729,8 @@ class WebWeixin(object):
 
     def handleMsg(self, r):
         for msg in r['AddMsgList']:
-            print '[*] 你有新的消息，请注意查收'
-            self._log('[*] 你有新的消息，请注意查收')
+            # print '[*] 你有新的消息，请注意查收'
+            # self._log('[*] 你有新的消息，请注意查收')
 
             if self.DEBUG:
                 print '[*] 该消息已储存到文件: ' + fn
@@ -743,21 +744,32 @@ class WebWeixin(object):
             if msgType == 1:
                 raw_msg = {'raw_msg': msg}
                 self._showMsg(raw_msg)
-                print '###' + str(content.find('小精灵')) + '###' + str(
-                    content.find('@' + self.User['NickName']))
+                # print '###' + str(content.find('小精灵')) + '###' + str(
+                #     content.find('@' + self.User['NickName']))
                 nick = content.find('@' + self.User['NickName'])
                 xiaojngling = content.find('小精灵')
-                if xiaojngling > 0 or nick > 0:
+                dva = content.find('喵咪D.VA')
+                if xiaojngling > 0 or nick > 0 or dva > 0:
                     if xiaojngling > 0:
                         content = content[xiaojngling + len('小精灵'):]
-                    else:
+                    elif nick > 0:
                         content = content[nick + len('@' + self.User['NickName']):]
+                    elif dva > 0:
+                        content = content[dva + len('喵咪D.VA'):]
 
                     ans = self._xiaojingling_post(content)
                     self._autoReply(ans, msg['FromUserName'])
                 elif msg['FromUserName'][:2] != '@@' and msg['FromUserName'] != self.User['UserName']:
                     ans = '[自动回复]您好，我现在有事不在，一会再和您联系，如果有急事请打电话'
-                    self._autoReply(ans, msg['FromUserName'])
+
+                    is_pub = False
+                    # 公众号或服务号 不自动回复
+                    for member in self.PublicUsersList:
+                        if member['UserName'] == msg['FromUserName']:
+                            is_pub = True
+                            break
+                    if not is_pub:
+                        self._autoReply(ans, msg['FromUserName'])
 
 
             elif msgType == 3:
@@ -801,13 +813,15 @@ class WebWeixin(object):
                     self._autoReply('[自动回复]您好，我现在有事不在，看不了表情，一会再和您联系，如果有急事请打电话', msg['FromUserName'])
 
             elif msgType == 49:
+
+                html_parser = HTMLParser.HTMLParser()
                 appMsgType = defaultdict(lambda: "")
                 appMsgType.update({5: '链接', 3: '音乐', 7: '微博'})
                 print '%s 分享了一个%s:' % (name, appMsgType[msg['AppMsgType']])
                 print '========================='
                 print '= 标题: %s' % msg['FileName']
                 print '= 描述: %s' % self._searchContent('des', content, 'xml')
-                print '= 链接: %s' % msg['Url']
+                print '= 链接: %s' % html_parser.unescape(msg['Url'])
                 print '= 来自: %s' % self._searchContent('appname', content, 'xml')
                 print '========================='
                 card = {
@@ -820,8 +834,9 @@ class WebWeixin(object):
                     name, appMsgType[msg['AppMsgType']], json.dumps(card))}
                 self._showMsg(raw_msg)
             elif msgType == 51:
-                raw_msg = {'raw_msg': msg, 'message': '[*] 成功获取联系人信息'}
-                self._showMsg(raw_msg)
+                # raw_msg = {'raw_msg': msg, 'message': '[*] 成功获取联系人信息'}
+                # self._showMsg(raw_msg)
+                self._log(msg)
             elif msgType == 62:
                 video = self.webwxgetvideo(msgid)
                 raw_msg = {'raw_msg': msg,
@@ -839,20 +854,23 @@ class WebWeixin(object):
                 if msg['FromUserName'][:2] == '@@':
                     # 来自群的消息
                     if re.search(":<br/>", content, re.IGNORECASE):
-                        [people, content] = content.split(':<br/>')
+                        [people, content] = content.split(':<br/>', 1)
                         srcName = self.getUserRemarkName(people)
                     else:
                         srcName = ""
 
-                self._autoReply('@%s 你又撤回了什么见不得人的消息？' % srcName, msg['FromUserName'])
+                self._autoReply('天啦噜~ %s 又撤回了一条消息' % srcName, msg['FromUserName'])
+
                 oldmsgid = re.search('<msgid>(\d+)</msgid>', content)
                 # print("oldmsgid:" + str(oldmsgid.group(1)))
-                fnContent = '撤回的消息 id：' + oldmsgid.group(1) + "|内容：" + self.AllMessages[str(oldmsgid.group(1))]
+                fnContent = '撤回的消息 id：' + oldmsgid.group(1) + "|谁撤回的：" + srcName + "|内容：" + self.AllMessages[
+                    str(oldmsgid.group(1))]
                 print (fnContent)
 
                 fn = 'msgs/undo.json'
                 with open(fn, 'a') as f:
-                    f.write(fnContent + "|full_message:" + str(msg) + '\n\n')
+                    # f.write(fnContent + "|full_message:" + str(msg) + '\n\n')
+                    f.write(fnContent + '\n\n')
 
             else:
                 self._log('[*] 该消息类型为: %d，可能是表情，图片, 链接或红包: %s' %
@@ -1001,7 +1019,7 @@ class WebWeixin(object):
 
         # if self.interactive and raw_input('[*] 是否开启自动回复模式(y/n): ') == 'y':
         if self.interactive:
-            self.autoReplyMode = True
+            self.autoReplyMode = "1"
             print '[*] 自动回复模式 ... 开启'
             self._log('[*] 自动回复模式 ... 开启')
         else:
@@ -1027,27 +1045,33 @@ class WebWeixin(object):
                 else:
                     self.sendMsg(name, word)
             elif text[:3] == 'm->':
-                [name, file] = text[3:].split(':',1)
+                [name, file] = text[3:].split(':', 1)
                 self.sendMsg(name, file, True)
             elif text[:3] == 'f->':
                 print '发送文件'
                 self._log('发送文件')
             elif text[:3] == 'i->':
                 print '发送图片'
-                [name, file_name] = text[3:].split(':',1)
+                [name, file_name] = text[3:].split(':', 1)
                 self.sendImg(name, file_name)
                 self._log('发送图片')
             elif text[:3] == 'e->':
                 print '发送表情'
-                [name, file_name] = text[3:].split(':',1)
+                [name, file_name] = text[3:].split(':', 1)
                 self.sendEmotion(name, file_name)
                 self._log('发送表情')
-            elif text == 'autorepon':
-                print '开启自动回复'
-                self._switchautoReplyMode(True)
+            elif text == 'autorep0':
+                print '开启自动回复 0 【回复群组和个人】'
+                self._switchautoReplyMode("0")
+            elif text == 'autorep1':
+                print '开启自动回复 1【仅回复群组】'
+                self._switchautoReplyMode("1")
+            elif text == 'autorep2':
+                print '开启自动回复 2【仅回复个人】'
+                self._switchautoReplyMode("2")
             elif text == 'autorepoff':
                 print '关闭自动回复'
-                self._switchautoReplyMode(False)
+                self._switchautoReplyMode("-1")
 
     def _safe_open(self, path):
         if self.autoOpen:
@@ -1183,33 +1207,48 @@ class WebWeixin(object):
         return '未知'
 
     def _autoReply(self, ans, toUserName):
-        print ("self.autoReplyMode" + str(self.autoReplyMode))
+        print ("self.autoReplyMode:" + str(self.autoReplyMode))
         fn = 'config/autoReply.txt'
         if toUserName != self.User['UserName']:
             try:
                 file_object = open(fn)
                 try:
-                    self.autoReplyMode = (file_object.read() == "True")
-                    if self.autoReplyMode == True:
-                        if self.webwxsendmsg(ans, toUserName):
-                            print '自动回复: ' + ans
-                            self._info('自动回复: ' + ans)
-                        else:
-                            print '自动回复失败'
-                            self._info('自动回复失败')
+                    self.autoReplyMode = file_object.read()
+                    rep = False
+                    # -1 关闭自动回复
+                    # 0  回复群组和个人
+                    # 1  仅回复群组【默认值】
+                    # 2  仅回复个人用户
+                    if toUserName[:2] != '@@':  # 个人用户
+                        rep = (self.autoReplyMode == "0") or (self.autoReplyMode == "2")
+                    else:  # 群组
+                        rep = (self.autoReplyMode == "0") or (self.autoReplyMode == "1")
+
+                    if rep == True:
+                        if self.getUserRemarkName(toUserName)=='桌客桌游狼人杀群和策略游戏群':
+                            if self.webwxsendmsg('小萱老师不让说话 [闭嘴][闭嘴][闭嘴]', toUserName):
+                                print '自动回复: 小萱老师不让说话 [闭嘴][闭嘴][闭嘴]|' + ans
+                                self._info('自动回复: 小萱老师不让说话 [闭嘴][闭嘴][闭嘴]|' + ans)
+                            else:
+                                print '自动回复失败'
+                                self._info('自动回复失败')
+                        else: #不回复 桌客桌游狼人杀群和策略游戏群 的消息
+                            if self.webwxsendmsg(ans, toUserName):
+                                print '自动回复: ' + ans
+                                self._info('自动回复: ' + ans)
+                            else:
+                                print '自动回复失败'
+                                self._info('自动回复失败')
                 finally:
                     file_object.close()
             except:
                 print("config file not fond")
 
-    def _switchautoReplyMode(self, b):
+    def _switchautoReplyMode(self, mode):
         fn = 'config/autoReply.txt'
-        if b:
-            with open(fn, 'w+') as f:
-                f.write("True")
-        else:
-            with open(fn, 'w+') as f:
-                f.write("False")
+
+        with open(fn, 'w+') as f:
+            f.write(mode)
 
     def _log(self, str=""):
         if self.DEBUG:
@@ -1247,10 +1286,15 @@ if __name__ == '__main__':
     coloredlogs.install(level='DEBUG')
     webwx = WebWeixin()
     webwx.loadConfig({'DEBUG': False,
-                      'autoReplyMode': True,
+                      'autoReplyMode': "1",
                       'user_agent': None,
                       'interactive': True,
                       'autoOpen': False})
+    # autoReplyMode:
+    # -1 关闭自动回复
+    # 0  回复群组和个人
+    # 1  仅回复群组【默认值】
+    # 2  仅回复个人用户
     print(webwx)
     fn = 'msgs/msg.json'
     with open(fn, 'a') as f:
