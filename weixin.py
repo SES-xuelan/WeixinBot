@@ -1225,10 +1225,10 @@ class WebWeixin(object):
                         rep = (self.autoReplyMode == "0") or (self.autoReplyMode == "1")
 
                     if rep == True:
-                        if self.getUserRemarkName(toUserName)=='桌客桌游狼人杀群和策略游戏群':
-                            if self.webwxsendmsg('小萱老师不让说话 [闭嘴][闭嘴][闭嘴]', toUserName):
-                                print '自动回复: 小萱老师不让说话 [闭嘴][闭嘴][闭嘴]|' + ans
-                                self._info('自动回复: 小萱老师不让说话 [闭嘴][闭嘴][闭嘴]|' + ans)
+                        if self.getUserRemarkName(toUserName)=='要过滤的群名':
+                            if self.webwxsendmsg('我选择不说话 [闭嘴][闭嘴][闭嘴]', toUserName):
+                                print '自动回复: 我选择不说话 [闭嘴][闭嘴][闭嘴]|' + ans
+                                self._info('自动回复: 我选择不说话 [闭嘴][闭嘴][闭嘴]|' + ans)
                             else:
                                 print '自动回复失败'
                                 self._info('自动回复失败')
